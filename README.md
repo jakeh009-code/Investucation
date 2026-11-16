@@ -34,6 +34,10 @@ Live prices come from [Finnhub](https://finnhub.io). Without a key the site trie
 - Pound/dollar exchange rate: [Frankfurter](https://www.frankfurter.app) (European Central Bank rates)
 - Price charts: TradingView
 
+## Feedback
+
+Found a bug or have an idea? [Open an issue](https://github.com/jakeh009-code/Investucation/issues/new).
+
 ## Disclaimer
 
 Investucation is for education only and does not give financial advice.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contact: Investucation</title>
+  <title>Feedback: Investucation</title>
   <link rel="stylesheet" href="style.css">
 
 </head>
@@ -17,7 +17,7 @@
         <li><a href="dashboard.html">Dashboard</a></li>
         <li><a href="portfolio.html">Portfolio</a></li>
         <li><a href="faq.html">FAQ</a></li>
-        <li><a href="contact.html" aria-current="page">Contact</a></li>
+        <li><a href="contact.html" aria-current="page">Feedback</a></li>
       </ul>
       </nav>
     </div>
@@ -25,17 +25,19 @@
   <main class="wrap">
     <div class="contact-grid page-head">
       <div>
-        <h1>Get in touch</h1>
-        <p>Got a question, found a bug or have an idea for the site? Send a message and we’ll reply as soon as we can.</p>
-        <p class="contact-alt">Or email <a href="mailto:help@investucation.org">help@investucation.org</a></p>
+        <h1>Found a bug or have an idea?</h1>
+        <p>Investucation is a student project. Its code is public on GitHub, and that’s also where feedback goes.</p>
       </div>
-      <form class="contact-form panel" onsubmit="sendMail(event)">
-        <label>Your name<input type="text" id="contact-name" autocomplete="name" required></label>
-        <label>Your email<input type="email" id="contact-email" autocomplete="email" required></label>
-        <label>Message<textarea id="contact-message" required></textarea></label>
-        <button type="submit" class="btn btn-primary">Open in my email app</button>
-        <p class="form-note" id="form-note" aria-live="polite"></p>
-      </form>
+      <div class="panel feedback">
+        <h2>Leave feedback on GitHub</h2>
+        <p>Open an “issue” to report something that isn’t working or to suggest a feature. Say which page you were on and what happened.</p>
+        <div class="feedback-actions">
+          <a class="btn btn-primary" href="https://github.com/jakeh009-code/Investucation/issues/new">Report a bug or suggest an idea</a>
+          <a class="btn btn-ghost" href="https://github.com/jakeh009-code/Investucation/issues">See existing issues</a>
+          <a class="btn btn-ghost" href="https://github.com/jakeh009-code/Investucation">View the code</a>
+        </div>
+        <p class="form-note">You’ll need a free GitHub account to open an issue. Issues are public, so don’t include personal details like your full name, school or email address.</p>
+      </div>
     </div>
   </main>
   <footer class="site-footer">
@@ -43,25 +45,14 @@
       <div class="footer-links">
         <a href="home.html#mission">About</a>
         <a href="faq.html">FAQ</a>
-        <a href="contact.html">Contact</a>
+        <a href="contact.html">Feedback</a>
+        <a href="https://github.com/jakeh009-code/Investucation">GitHub</a>
         <a href="privacy.html">Privacy policy</a>
         <a href="terms.html">Terms and conditions</a>
       </div>
-      <div>&copy; <span id="copyright-year">2026</span> Investucation. Practice money only.</div>
+      <div>&copy; <span id="copyright-year">2026</span> Investucation. A student project. Practice money only.</div>
     </div>
   </footer>
   <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
-  <script>
-    function sendMail(e) {
-      e.preventDefault();
-      const name = document.getElementById('contact-name').value;
-      const email = document.getElementById('contact-email').value;
-      const message = document.getElementById('contact-message').value;
-      const subject = encodeURIComponent('Message from ' + name);
-      const body = encodeURIComponent('Name: ' + name + '\n' + 'Email: ' + email + '\n' + 'Message: ' + message);
-      window.location.href = `mailto:help@investucation.org?subject=${subject}&body=${body}`;
-      document.getElementById('form-note').textContent = 'Your email app should open with the message filled in. If nothing happens, email help@investucation.org directly.';
-    }
-  </script>
 </body>
 </html>
