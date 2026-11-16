@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock: Investucation</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app-storage.js"></script>
+  <script src="config.js"></script>
+  <script src="market-data.js"></script>
+  <script src="currency.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="logo" href="home.html"><span class="logo-mark" aria-hidden="true"></span>Investucation</a>
+      <nav aria-label="Main">
+      <ul class="nav-links">
+        <li><a href="home.html">Home</a></li>
+        <li><a href="dashboard.html">Dashboard</a></li>
+        <li><a href="portfolio.html">Portfolio</a></li>
+        <li><a href="faq.html">FAQ</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      </nav>
+      <div class="wallet">
+        <div class="balance-chip"><small>Practice balance</small><span id="balance-display">£0.00</span></div>
+        <label class="visually-hidden" for="currency-select">Currency</label>
+        <select id="currency-select" class="currency-select">
+          <option value="GBP">£ GBP</option>
+          <option value="USD">$ USD</option>
+        </select>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <a class="back-link" href="dashboard.html">‹ All stocks</a>
+    <div class="stock-head">
+      <div>
+        <h1 id="stock-title" class="stock-ticker">Loading…</h1>
+        <div id="company-name" class="stock-company"></div>
+      </div>
+      <div id="stock-price" class="stock-quote"></div>
+    </div>
+
+    <div class="trade">
+      <section class="trade-card buy" aria-labelledby="buy-title">
+        <h2 id="buy-title">Buy shares</h2>
+        <p class="muted">Paid for from your practice balance.</p>
+        <div class="stepper">
+          <button type="button" id="decrease-shares" aria-label="One fewer share to buy">−</button>
+          <input id="share-count" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Shares to buy">
+          <button type="button" id="increase-shares" aria-label="One more share to buy">+</button>
+        </div>
+        <button type="button" id="buy-btn" class="btn btn-buy">Buy</button>
+        <div id="buy-message" class="trade-msg" aria-live="polite"></div>
+      </section>
+      <section class="trade-card sell" aria-labelledby="sell-title">
+        <h2 id="sell-title">Sell shares</h2>
+        <p class="muted" id="owned-note">&nbsp;</p>
+        <div class="stepper">
+          <button type="button" id="decrease-sell-shares" aria-label="One fewer share to sell">−</button>
+          <input id="sell-share-count" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Shares to sell">
+          <button type="button" id="increase-sell-shares" aria-label="One more share to sell">+</button>
+        </div>
+        <button type="button" id="sell-btn" class="btn btn-sell">Sell</button>
+        <div id="sell-message" class="trade-msg" aria-live="polite"></div>
+      </section>
+    </div>
+
+    <section class="chart-card" aria-label="Price chart">
+      <div id="tradingview_chart"></div>
+      <div class="chart-foot">
+        <p>Prices can be delayed by up to an hour and only change while the US market is open (2:30pm to 9pm UK time, Monday to Friday). The chart shows prices in US dollars.</p>
+        <div id="market-status"></div>
+        <button type="button" class="btn btn-ghost btn-small" onclick="forceChartRefresh(symbol)">Refresh chart</button>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-links">
+        <a href="home.html#mission">About</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contact.html">Contact</a>
+        <a href="privacy.html">Privacy policy</a>
+        <a href="terms.html">Terms and conditions</a>
+      </div>
+      <div>&copy; <span id="copyright-year">2026</span> Investucation. Practice money only.</div>
+    </div>
+  </footer>
+  <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
+  <div id="tip-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="tip-modal-title">
+    <div id="tip-modal-backdrop"></div>
+    <div id="tip-modal-content">
+      <h2 id="tip-modal-title">Quick tip</h2>
+      <div id="tip-modal-message"></div>
+      <button type="button" id="tip-modal-continue" class="btn btn-primary btn-small">Got it</button>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const symbol = params.get('symbol');
+    const title = document.getElementById('stock-title');
+    const priceDiv = document.getElementById('stock-price');
+    const chartCanvas = document.getElementById('stock-chart');
+    let chart;
+
+
+    const popularSymbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "NFLX", "JPM"];
+    const stockList = document.getElementById('stock-list');
+
+    const clientQuoteCache = new Map();
+    const CLIENT_QUOTE_TTL = 10000;
+    async function fetchStockQuote(symbol) {
+      try {
+        const now = Date.now();
+        const cached = clientQuoteCache.get(symbol);
+        if (cached && (now - cached.ts) < CLIENT_QUOTE_TTL) { return cached.data; }
+        const data = await window.InvestucationMarket.fetchQuote(symbol);
+        if (!data) { return null; }
+        clientQuoteCache.set(symbol, { ts: Date.now(), data });
+        return data;
+      } catch (error) {
+        console.error(`Failed to fetch quote for ${symbol}:`, error);
+        return null;
+      }
+    }
+
+    const clientCompanyCache = new Map();
+    const CLIENT_COMPANY_TTL = 3600 * 1000;
+    async function fetchCompanyName(symbol) {
+      try {
+        const now = Date.now();
+        const cached = clientCompanyCache.get(symbol);
+        if (cached && (now - cached.ts) < CLIENT_COMPANY_TTL) { return cached.data?.name || symbol; }
+        const name = await window.InvestucationMarket.fetchCompanyName(symbol);
+        clientCompanyCache.set(symbol, { ts: Date.now(), data: { name: name } });
+        return name;
+      } catch (error) {
+        console.error(`Failed to fetch company name for ${symbol}:`, error);
+        return symbol;
+      }
+    }
+
+    function formatCurrency(amount, currency) {
+      return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(amount);
+    }
+
+    const Cur = window.InvestucationCurrency;
+    let usdToGbpRate = 0.79;
+    async function fetchUsdToGbpRate() {
+      await Cur.load();
+      usdToGbpRate = Cur.usdToGbp();
+      window.usdToGbpRate = usdToGbpRate;
+    }
+
+    function getTradingViewSymbol(symbol) {
+      // Let TradingView find the right exchange (NASDAQ or NYSE). The chart shows USD prices.
+      return String(symbol).toUpperCase();
+    }
+
+    function loadTradingViewWidget(symbol) {
+      const oldChart = document.getElementById('tradingview_chart');
+      if (oldChart) oldChart.remove();
+
+      const parent = document.querySelector('.chart-card');
+      const newChart = document.createElement('div');
+      newChart.id = 'tradingview_chart';
+      parent.insertBefore(newChart, parent.firstChild);
+
+      const oldScript = document.getElementById('tv-widget-script');
+      if (oldScript) oldScript.remove();
+
+      const script = document.createElement('script');
+      script.id = 'tv-widget-script';
+      script.type = 'text/javascript';
+      script.src = 'https://s3.tradingview.com/tv.js';
+      script.onload = function() {
+        new TradingView.widget({
+          autosize: true,
+          symbol: getTradingViewSymbol(symbol),
+          interval: '30',
+          timezone: 'Europe/London',
+          theme: 'light',
+          backgroundColor: '#FFFFFF',
+          gridColor: 'rgba(28, 20, 51, 0.06)',
+          style: 2,
+          studies: [],
+          locale: 'en',
+          toolbar_bg: '#f1f3f6',
+          enable_publishing: false,
+          hide_top_toolbar: true,
+          hide_legend: true,
+          hide_symbol_logo: true,
+          hide_side_toolbar: true,
+          save_image: false,
+          container_id: 'tradingview_chart'
+        });
+      };
+      document.body.appendChild(script);
+    }
+
+    function loadTradingViewWidgetWithInterval(symbol, interval) {
+      const parent = document.querySelector('.chart-card');
+      let oldChart = document.getElementById('tradingview_chart');
+      if (oldChart) oldChart.remove();
+      const newChart = document.createElement('div');
+      newChart.id = 'tradingview_chart';
+      parent.insertBefore(newChart, parent.firstChild);
+
+      const oldScript = document.getElementById('tv-widget-script');
+      if (oldScript) oldScript.remove();
+
+      const script = document.createElement('script');
+      script.id = 'tv-widget-script';
+      script.type = 'text/javascript';
+      script.src = 'https://s3.tradingview.com/tv.js';
+      script.onload = function() {
+        new TradingView.widget({
+          autosize: true,
+          symbol: getTradingViewSymbol(symbol),
+          interval: interval,
+          timezone: 'Europe/London',
+          theme: 'light',
+          backgroundColor: '#FFFFFF',
+          gridColor: 'rgba(28, 20, 51, 0.06)',
+          style: 2,
+          studies: [],
+          locale: 'en',
+          toolbar_bg: '#f1f3f6',
+          enable_publishing: false,
+          hide_top_toolbar: true,
+          hide_legend: true,
+          hide_symbol_logo: true,
+          hide_side_toolbar: true,
+          save_image: false,
+          container_id: 'tradingview_chart'
+        });
+      };
+      document.body.appendChild(script);
+    }
+
+    function forceChartRefresh(symbol) {
+      loadTradingViewWidgetWithInterval(symbol, '60');
+      setTimeout(function () {
+        loadTradingViewWidgetWithInterval(symbol, '30');
+      }, 1200);
+    }
+
+    // Remove all Finnhub candle/chart logic. Only use Finnhub for price and company name.
+    async function loadStock() {
+      await fetchUsdToGbpRate();
+      let balance_gbp = Number(localStorage.getItem(getStorageKey('balance_gbp')) || 100000);
+      updateStockBalance(balance_gbp);
+      priceDiv.innerHTML = '<small>Current price</small>Loading…';
+      const [quote, companyName] = await Promise.all([
+        fetchStockQuote(symbol),
+        fetchCompanyName(symbol)
+      ]);
+      let price_gbp = quote && typeof quote.c === 'number' ? quote.c * usdToGbpRate : null;
+      // Everything is stored in GBP; `price` is only for showing in the user's currency
+      let price = price_gbp !== null ? Cur.fromGbp(price_gbp) : null;
+      title.textContent = String(symbol).toUpperCase();
+      document.getElementById('company-name').textContent = companyName || '';
+      priceDiv.innerHTML = price !== null
+        ? `<small>Current price</small>${Cur.format(price)}`
+        : '<small>Current price</small>Not available';
+      document.title = `${symbol}: Investucation`;
+      const owned = (JSON.parse(localStorage.getItem(getStorageKey('portfolio')) || '[]').find(s => s.symbol === symbol) || {}).shares || 0;
+      document.getElementById('owned-note').textContent = owned ? `You own ${owned} share${owned === 1 ? '' : 's'}.` : 'You don’t own any shares yet.';
+      loadTradingViewWidget(symbol);
+
+      // --- Buy/Sell button logic ---
+      const shareInput = document.getElementById('share-count');
+      const decreaseBtn = document.getElementById('decrease-shares');
+      const increaseBtn = document.getElementById('increase-shares');
+      const buyBtn = document.getElementById('buy-btn');
+      const buyMsg = document.getElementById('buy-message');
+      let currentPrice = price;
+      const currentPriceGbp = price_gbp;
+      decreaseBtn.onclick = () => {
+        let val = parseInt(shareInput.value, 10) || 1;
+        if (val > 1) shareInput.value = val - 1;
+      };
+      increaseBtn.onclick = () => {
+        let val = parseInt(shareInput.value, 10) || 1;
+        shareInput.value = val + 1;
+      };
+      buyBtn.onclick = () => {
+        let shares = Math.max(1, parseInt(shareInput.value, 10) || 1);
+        shareInput.value = shares;
+        if (!currentPrice) {
+          buyMsg.textContent = 'No price data.';
+          buyMsg.style.color = '#E5484D';
+          return;
+        }
+        let balance_gbp = Number(localStorage.getItem(getStorageKey('balance_gbp')) || 100000);
+        let cost_gbp = shares * currentPriceGbp;
+        if (cost_gbp > balance_gbp) {
+          buyMsg.textContent = 'Not enough balance!';
+          buyMsg.style.color = '#E5484D';
+          return;
+        }
+        // Update balance
+        balance_gbp -= cost_gbp;
+        localStorage.setItem(getStorageKey('balance_gbp'), balance_gbp);
+        // Add to portfolio (combine if already owned)
+        let portfolio = [];
+        try { portfolio = JSON.parse(localStorage.getItem(getStorageKey('portfolio')) || '[]'); } catch {}
+        const now = new Date();
+        let found = false;
+        for (let i = 0; i < portfolio.length; i++) {
+          if (portfolio[i].symbol === symbol) {
+            // Weighted average price
+            const totalShares = portfolio[i].shares + shares;
+            let price_gbp = currentPriceGbp;
+            portfolio[i].price = ((portfolio[i].shares * portfolio[i].price) + (shares * price_gbp)) / totalShares;
+            portfolio[i].shares = totalShares;
+            portfolio[i].date = now.toISOString();
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          let price_gbp = currentPriceGbp;
+          portfolio.push({
+            symbol,
+            shares,
+            price: price_gbp,
+            date: now.toISOString()
+          });
+        }
+        localStorage.setItem(getStorageKey('portfolio'), JSON.stringify(portfolio));
+        buyMsg.textContent = `Bought ${shares} @ ${Cur.format(currentPrice)}`;
+        buyMsg.style.color = '#12A26B';
+        updateStockBalance(balance_gbp);
+        refreshOwned();
+        // Record recent activity
+        const nowStr = new Date().toLocaleString();
+        localStorage.setItem('last_trade', `Bought ${shares} ${symbol} @ ${Cur.format(currentPrice)} (${nowStr})`);
+      };
+      // --- Sell button logic ---
+      const sellShareInput = document.getElementById('sell-share-count');
+      const decreaseSellBtn = document.getElementById('decrease-sell-shares');
+      const increaseSellBtn = document.getElementById('increase-sell-shares');
+      const sellBtn = document.getElementById('sell-btn');
+      const sellMsg = document.getElementById('sell-message');
+      decreaseSellBtn.onclick = () => {
+        let val = parseInt(sellShareInput.value, 10) || 1;
+        if (val > 1) sellShareInput.value = val - 1;
+      };
+      increaseSellBtn.onclick = () => {
+        let val = parseInt(sellShareInput.value, 10) || 1;
+        sellShareInput.value = val + 1;
+      };
+      sellBtn.onclick = () => {
+        let sharesToSell = Math.max(1, parseInt(sellShareInput.value, 10) || 1);
+        sellShareInput.value = sharesToSell;
+        if (!currentPrice) {
+          sellMsg.textContent = 'No price data.';
+          sellMsg.style.color = '#E5484D';
+          return;
+        }
+        let portfolio = [];
+        try { portfolio = JSON.parse(localStorage.getItem(getStorageKey('portfolio')) || '[]'); } catch {}
+        // Find the stock entry
+        let idx = portfolio.findIndex(s => s.symbol === symbol);
+        let totalOwned = idx !== -1 ? portfolio[idx].shares : 0;
+        if (sharesToSell > totalOwned) {
+          sellMsg.textContent = 'Not enough shares to sell!';
+          sellMsg.style.color = '#E5484D';
+          return;
+        }
+        // Record realized sale for portfolio tracking
+        let soldStocks = [];
+        try { soldStocks = JSON.parse(localStorage.getItem(getStorageKey('soldStocks')) || '[]'); } catch {}
+        if (idx !== -1) {
+          let lot = portfolio[idx];
+          let sharesSold = Math.min(sharesToSell, lot.shares);
+          soldStocks.push({
+            symbol: lot.symbol,
+            shares: sharesSold,
+            buyPrice: lot.price,
+            sellPrice: currentPriceGbp
+          });
+        }
+        localStorage.setItem(getStorageKey('soldStocks'), JSON.stringify(soldStocks));
+        // Subtract shares or remove entry
+        if (idx !== -1) {
+          portfolio[idx].shares -= sharesToSell;
+          if (portfolio[idx].shares <= 0) {
+            portfolio.splice(idx, 1);
+          }
+        }
+        // Update balance
+        let balance_gbp = Number(localStorage.getItem(getStorageKey('balance_gbp')) || 100000);
+        let proceeds_gbp = sharesToSell * currentPriceGbp;
+        balance_gbp += proceeds_gbp;
+        localStorage.setItem(getStorageKey('balance_gbp'), balance_gbp);
+        localStorage.setItem(getStorageKey('portfolio'), JSON.stringify(portfolio));
+        sellMsg.textContent = `Sold ${sharesToSell} @ ${Cur.format(currentPrice)}`;
+        sellMsg.style.color = '#12A26B';
+        updateStockBalance(balance_gbp);
+        refreshOwned();
+        // Record recent activity
+        const nowStr = new Date().toLocaleString();
+        localStorage.setItem('last_trade', `Sold ${sharesToSell} ${symbol} @ ${Cur.format(currentPrice)} (${nowStr})`);
+      };
+    }
+
+    if (symbol) loadStock();
+    else { title.textContent = "No stock chosen"; priceDiv.innerHTML = '<a href="dashboard.html">Pick one on the dashboard</a>'; }
+
+    function updateStockBalance(balanceGbp) {
+      document.getElementById('balance-display').textContent = Cur.format(Cur.fromGbp(balanceGbp));
+    }
+    function refreshOwned() {
+      let p = [];
+      try { p = JSON.parse(localStorage.getItem(getStorageKey('portfolio')) || '[]'); } catch (e) {}
+      const owned = (p.find(s => s.symbol === symbol) || {}).shares || 0;
+      document.getElementById('owned-note').textContent = owned ? `You own ${owned} share${owned === 1 ? '' : 's'}.` : 'You don’t own any shares yet.';
+    }
+    // Currency: picked from the user's region unless they choose one here
+    Cur.bindSelect(document.getElementById('currency-select'), loadStock);
+
+    function showTipOnce(key, message) {
+      if (localStorage.getItem(key)) return;
+      const overlay = document.getElementById('tip-modal-overlay');
+      const msg = document.getElementById('tip-modal-message');
+      msg.innerHTML = message;
+      overlay.style.display = 'flex';
+      overlay.style.animation = 'fadeIn 0.9s';
+      document.getElementById('tip-modal-content').onclick = () => {
+        overlay.style.animation = 'fadeOut 0.9s';
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          overlay.style.animation = '';
+          localStorage.setItem(key, '1');
+        }, 900);
+      };
+      document.getElementById('tip-modal-backdrop').onclick = document.getElementById('tip-modal-content').onclick;
+    }
+    // Show tip for first-time users on the stock page
+    showTipOnce('stockpage-tip', `This page shows a stock’s current price and how it has moved over time. Use it to decide whether to buy.<br><br><strong>Remember: buy low, sell high!</strong>`);
+
+    function updateMarketStatus() {
+      // US market: 9:30am to 4:00pm New York time, Monday to Friday (bank holidays not included)
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(new Date());
+      const get = t => parts.find(p => p.type === t).value;
+      const mins = Number(get('hour')) * 60 + Number(get('minute'));
+      const isOpen = !['Sat', 'Sun'].includes(get('weekday')) && mins >= 570 && mins < 960;
+      const statusDiv = document.getElementById('market-status');
+      if (statusDiv) {
+        statusDiv.innerHTML = isOpen
+          ? '<span class="status-open"><span class="status-dot"></span>Market open</span>'
+          : '<span class="status-closed"><span class="status-dot"></span>Market closed</span>';
+      }
+    }
+    updateMarketStatus();
+    setInterval(updateMarketStatus, 60000);
+
+  </script>
+</body>
+</html>

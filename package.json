@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "name": "investucation",
+  "description": "Static site: local accounts in the browser; live quotes via Finnhub/Yahoo and FX via Frankfurter (no backend).",
+  "scripts": {
+    "start": "npx serve Homepage -l 8080",
+    "serve": "npx serve Homepage -l 8080"
+  }
+}

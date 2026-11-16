@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard: Investucation</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app-storage.js"></script>
+  <script src="config.js"></script>
+  <script src="market-data.js"></script>
+  <script src="currency.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="logo" href="home.html"><span class="logo-mark" aria-hidden="true"></span>Investucation</a>
+      <nav aria-label="Main">
+      <ul class="nav-links">
+        <li><a href="home.html">Home</a></li>
+        <li><a href="dashboard.html" aria-current="page">Dashboard</a></li>
+        <li><a href="portfolio.html">Portfolio</a></li>
+        <li><a href="faq.html">FAQ</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      </nav>
+      <div class="wallet">
+        <div class="balance-chip"><small>Practice balance</small><span id="dashboard-balance">£0.00</span></div>
+        <label class="visually-hidden" for="currency-select">Currency</label>
+        <select id="currency-select" class="currency-select">
+          <option value="GBP">£ GBP</option>
+          <option value="USD">$ USD</option>
+        </select>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1>Pick a stock</h1>
+      <p>Search for a US company by its ticker, or start with one of the popular stocks.</p>
+    </div>
+    <div class="dash">
+      <section aria-labelledby="popular-stocks-title">
+        <div class="search-bar" role="search">
+          <label class="visually-hidden" for="stock-search">Stock ticker</label>
+          <input type="text" id="stock-search" placeholder="Try AAPL, TSLA or MSFT" autocomplete="off">
+          <button id="search-btn" class="btn btn-primary">Search</button>
+        </div>
+        <h2 id="popular-stocks-title" class="list-title">Popular stocks</h2>
+        <div class="stock-list" id="stock-list" aria-live="polite"></div>
+      </section>
+      <aside class="side">
+        <div class="side-card">
+          <h3>Your progress</h3>
+          <div class="side-stat" id="owned-stocks-count">0</div>
+          <p id="owned-stocks-label">companies in your portfolio</p>
+          <p id="recent-activity" class="side-gap"></p>
+          <a class="btn btn-ghost btn-small" href="portfolio.html" id="portfolio-link">View portfolio</a>
+        </div>
+        <div class="side-card">
+          <h3>US market</h3>
+          <p id="market-status-message">Checking…</p>
+        </div>
+        <div class="side-card tip">
+          <h3>Tip of the day</h3>
+          <p id="tip-of-day"></p>
+        </div>
+      </aside>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-links">
+        <a href="home.html#mission">About</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contact.html">Contact</a>
+        <a href="privacy.html">Privacy policy</a>
+        <a href="terms.html">Terms and conditions</a>
+      </div>
+      <div>&copy; <span id="copyright-year">2026</span> Investucation. Practice money only.</div>
+    </div>
+  </footer>
+  <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
+  <div id="tip-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="tip-modal-title">
+    <div id="tip-modal-backdrop"></div>
+    <div id="tip-modal-content">
+      <h2 id="tip-modal-title">Quick tip</h2>
+      <div id="tip-modal-message"></div>
+      <button type="button" id="tip-modal-continue" class="btn btn-primary btn-small">Got it</button>
+    </div>
+  </div>
+  <script>
+
+    const popularSymbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "NFLX", "JPM"];
+    const stockList = document.getElementById('stock-list');
+
+    const clientQuoteCache = new Map(); // symbol -> { ts, data }
+    const CLIENT_QUOTE_TTL = 10000; // 10s
+    async function fetchStockQuote(symbol) {
+      try {
+        const now = Date.now();
+        const cached = clientQuoteCache.get(symbol);
+        if (cached && (now - cached.ts) < CLIENT_QUOTE_TTL) {
+          return cached.data;
+        }
+        const data = await window.InvestucationMarket.fetchQuote(symbol);
+        if (!data) {
+          return null;
+        }
+        clientQuoteCache.set(symbol, { ts: Date.now(), data });
+        return data;
+      } catch (error) {
+        console.error(`Failed to fetch quote for ${symbol}:`, error);
+        return null;
+      }
+    }
+
+    const clientCompanyCache = new Map(); // symbol -> { ts, data }
+    const CLIENT_COMPANY_TTL = 3600 * 1000; // 1h
+    async function fetchCompanyName(symbol) {
+      try {
+        const now = Date.now();
+        const cached = clientCompanyCache.get(symbol);
+        if (cached && (now - cached.ts) < CLIENT_COMPANY_TTL) {
+          return cached.data?.name || symbol;
+        }
+        const name = await window.InvestucationMarket.fetchCompanyName(symbol);
+        clientCompanyCache.set(symbol, { ts: Date.now(), data: { name: name } });
+        return name;
+      } catch (error) {
+        console.error(`Failed to fetch company name for ${symbol}:`, error);
+        return symbol;
+      }
+    }
+
+    function formatCurrency(amount, currency) {
+      return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(amount);
+    }
+
+    const Cur = window.InvestucationCurrency;
+    let usdToGbpRate = 0.79;
+    async function fetchUsdToGbpRate() {
+      await Cur.load();
+      usdToGbpRate = Cur.usdToGbp();
+      window.usdToGbpRate = usdToGbpRate;
+    }
+
+
+    async function fadeStockListUpdate(renderFn) {
+      stockList.classList.add('fade-out');
+      await renderFn();
+      stockList.classList.remove('fade-out');
+    }
+
+    function renderStockCard(stock) {
+      const price = stock.priceUSD !== null ? Cur.fromUsd(stock.priceUSD) : null;
+      const prev = stock.prevCloseUSD !== null ? Cur.fromUsd(stock.prevCloseUSD) : null;
+      let changeHtml = '';
+      if (price !== null && prev !== null && prev !== 0) {
+        const change = ((price - prev) / prev) * 100;
+        const dir = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+        const arrow = change > 0 ? '▲' : change < 0 ? '▼' : '■';
+        changeHtml = `<span class="pill ${dir}">${arrow} ${(change >= 0 ? '+' : '') + change.toFixed(2)}%</span>`;
+      }
+      return `
+        <a class="stock-card" href="stock.html?symbol=${encodeURIComponent(stock.symbol)}">
+          <div class="stock-card-top"><span class="stock-symbol">${stock.symbol}</span>${changeHtml}</div>
+          <div class="stock-name">${stock.name}</div>
+          <div class="stock-price">${price !== null ? Cur.format(price) : 'No price'}</div>
+        </a>`;
+    }
+
+    async function showPopularStocks() {
+      await fadeStockListUpdate(async () => {
+        stockList.innerHTML = '<div class="stock-list-msg">Loading prices…</div>';
+        await fetchUsdToGbpRate();
+        let stocks = await Promise.all(popularSymbols.map(async (symbol) => {
+          try {
+            const quote = await fetchStockQuote(symbol);
+            const name = await fetchCompanyName(symbol);
+            return {
+              symbol,
+              priceUSD: quote && typeof quote.c === 'number' ? quote.c : null,
+              prevCloseUSD: quote && typeof quote.pc === 'number' ? quote.pc : null,
+              name: name || symbol
+            };
+          } catch (error) {
+            console.error(`Error processing stock ${symbol}:`, error);
+            return {
+              symbol,
+              priceUSD: null,
+              prevCloseUSD: null,
+              name: symbol
+            };
+          }
+        }));
+        const validStocks = stocks.filter(stock => stock.priceUSD !== null);
+        
+        if (validStocks.length === 0) {
+          stockList.innerHTML = '<div class="stock-list-msg error">Couldn’t load prices. Check your connection, then search again or refresh the page.</div>';
+          return;
+        }
+        
+        stockList.innerHTML = stocks.map(stock => renderStockCard(stock)).join('');
+      });
+    }
+
+    async function showSearchResults(query) {
+      await fadeStockListUpdate(async () => {
+        stockList.innerHTML = '<div class="stock-list-msg">Searching…</div>';
+        await fetchUsdToGbpRate();
+        
+        // For now, we'll search by symbol directly since we don't have a search endpoint
+        // You can add a search endpoint to your backend if needed
+        const searchSymbol = query.toUpperCase();
+        try {
+          const quote = await fetchStockQuote(searchSymbol);
+          const name = await fetchCompanyName(searchSymbol);
+          
+          if (quote && quote.c) {
+            const stock = {
+              symbol: searchSymbol,
+              priceUSD: typeof quote.c === 'number' ? quote.c : null,
+              prevCloseUSD: typeof quote.pc === 'number' ? quote.pc : null,
+              name: name || searchSymbol
+            };
+            
+            stockList.innerHTML = renderStockCard(stock);
+          } else {
+            stockList.innerHTML = '<div class="stock-list-msg error">No US stock found with that ticker. Try a symbol like AAPL or TSLA.</div>';
+          }
+        } catch (error) {
+          stockList.innerHTML = '<div class="stock-list-msg error">No US stock found with that ticker. Try a symbol like AAPL or TSLA.</div>';
+        }
+      });
+    }
+
+    document.getElementById('search-btn').onclick = function() {
+      const query = document.getElementById('stock-search').value.trim();
+      if (!query) {
+        document.getElementById('popular-stocks-title').textContent = 'Popular stocks';
+        showPopularStocks();
+        return;
+      }
+      document.getElementById('popular-stocks-title').textContent = 'Search result';
+      showSearchResults(query);
+    };
+
+    showPopularStocks();
+
+    function updateDashboardBalance() {
+      const balance_gbp = Number(localStorage.getItem(getStorageKey('balance_gbp')) || 100000);
+      document.getElementById('dashboard-balance').textContent = Cur.format(Cur.fromGbp(balance_gbp));
+      // Show the starting amount in the user's currency in the welcome tip
+      const start = document.getElementById('start-amount');
+      if (start && Cur.get() !== 'GBP') {
+        start.textContent = '£100,000 (about ' + new Intl.NumberFormat(Cur.get() === 'USD' ? 'en-US' : 'en-GB', { style: 'currency', currency: Cur.get(), maximumFractionDigits: 0 }).format(Cur.fromGbp(100000)) + ')';
+      }
+    }
+    // Currency: picked from the user's region unless they choose one here
+    Cur.bindSelect(document.getElementById('currency-select'), function() {
+      updateDashboardBalance();
+      const q = document.getElementById('stock-search').value.trim();
+      if (q) showSearchResults(q); else showPopularStocks();
+    });
+    updateDashboardBalance();
+    Cur.load().then(updateDashboardBalance);
+
+
+
+
+    // Add Enter key support for search
+    const searchInput = document.getElementById('stock-search');
+    searchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('search-btn').click();
+      }
+    });
+
+
+
+    function showTipOnce(key, message) {
+      if (localStorage.getItem(key)) return;
+      const overlay = document.getElementById('tip-modal-overlay');
+      const msg = document.getElementById('tip-modal-message');
+      msg.innerHTML = message;
+      overlay.style.display = 'flex';
+      overlay.style.animation = 'fadeIn 0.9s';
+      document.getElementById('tip-modal-content').onclick = () => {
+        overlay.style.animation = 'fadeOut 0.9s';
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          overlay.style.animation = '';
+          localStorage.setItem(key, '1');
+        }, 900);
+      };
+      document.getElementById('tip-modal-backdrop').onclick = document.getElementById('tip-modal-content').onclick;
+    }
+    // showTipOnce logic for dashboard
+    showTipOnce('dashboard-tip', `Welcome to Investucation! Search for a stock, or pick one of the popular ones to get started.<br><br>You have <span id='start-amount'>£100,000</span> of practice money, so spend it wisely!<br><br><span class='muted'>Only US stocks are available for now.</span>`);
+
+    // Tip of the Day logic
+    const tips = [
+      "Diversify your portfolio to reduce risk!",
+      "Don't put all your eggs in one basket.",
+      "Research a company's fundamentals before investing.",
+      "Stock prices can be volatile—invest for the long term.",
+      "Use stop-loss orders to help manage risk.",
+      "Track your investments regularly.",
+      "Remember: past performance does not guarantee future results.",
+      "Stay calm during market swings—avoid emotional decisions.",
+      "Reinvest your dividends for compounding growth.",
+      "Set clear investment goals and stick to your plan."
+    ];
+    function getTipOfDay() {
+      const day = new Date().getDate();
+      return tips[day % tips.length];
+    }
+    document.getElementById('tip-of-day').textContent = getTipOfDay();
+
+    // Update owned stocks and recent activity (placeholder logic)
+    function updateSidebarStats() {
+      // Placeholder: you can replace with real logic
+      const owned = JSON.parse(localStorage.getItem(getStorageKey('portfolio')) || '[]');
+      document.getElementById('owned-stocks-count').textContent = owned.length;
+      document.getElementById('owned-stocks-label').textContent = owned.length === 1 ? 'company in your portfolio' : 'companies in your portfolio';
+      const lastTrade = localStorage.getItem('last_trade');
+      document.getElementById('recent-activity').textContent = lastTrade ? `Last trade: ${lastTrade}` : 'No trades yet. Pick a stock to make your first one.';
+    }
+    updateSidebarStats();
+    // Call updateSidebarStats after a trade elsewhere in your app to keep it fresh
+
+    // Market Status logic (US market)
+    function updateMarketStatus() {
+      // US market: 9:30am to 4:00pm New York time, Monday to Friday (bank holidays not included)
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(new Date());
+      const get = t => parts.find(p => p.type === t).value;
+      const mins = Number(get('hour')) * 60 + Number(get('minute'));
+      const open = !['Sat', 'Sun'].includes(get('weekday')) && mins >= 570 && mins < 960;
+      document.getElementById('market-status-message').innerHTML = open
+        ? '<span class="status-open"><span class="status-dot"></span>Open now</span><br>Prices are moving.'
+        : '<span class="status-closed"><span class="status-dot"></span>Closed</span><br>Opens 2:30pm UK time on weekdays.';
+    }
+    updateMarketStatus();
+
+  </script>
+</body>
+</html>

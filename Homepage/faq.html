@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ: Investucation</title>
+  <link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="logo" href="home.html"><span class="logo-mark" aria-hidden="true"></span>Investucation</a>
+      <nav aria-label="Main">
+      <ul class="nav-links">
+        <li><a href="home.html">Home</a></li>
+        <li><a href="dashboard.html">Dashboard</a></li>
+        <li><a href="portfolio.html">Portfolio</a></li>
+        <li><a href="faq.html" aria-current="page">FAQ</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      </nav>
+    </div>
+  </header>
+  <main class="wrap narrow">
+    <div class="page-head">
+      <h1>Questions and answers</h1>
+      <p>The basics of how Investucation works.</p>
+    </div>
+    <div class="faq-list">
+        <div class="faq-item"><button type="button" class="faq-question" aria-expanded="false">Is this real money?</button><div class="faq-answer">No. All trading uses practice money, so you can’t lose anything real.</div></div>
+        <div class="faq-item"><button type="button" class="faq-question" aria-expanded="false">Do I need to sign up?</button><div class="faq-answer">No account is required. Your progress is saved in this browser on your device.</div></div>
+        <div class="faq-item"><button type="button" class="faq-question" aria-expanded="false">How much practice money do I start with?</button><div class="faq-answer">Everyone starts with £100,000. It’s saved in your browser, so it’ll still be there next time you visit on the same device.</div></div>
+        <div class="faq-item"><button type="button" class="faq-question" aria-expanded="false">Can I see prices in my own currency?</button><div class="faq-answer">Yes. The site picks your currency from your device’s region, so you’ll see euros in France or dollars in the US, for example. You can change it any time using the currency menu at the top of the dashboard, stock and portfolio pages. Your balance is still worth the same £100,000; it’s just shown in a different currency.</div></div>
+        <div class="faq-item"><button type="button" class="faq-question" aria-expanded="false">Which stocks can I trade?</button><div class="faq-answer">US stocks, using their ticker symbol, like AAPL for Apple or TSLA for Tesla. UK stocks aren’t available yet.</div></div>
+        <div class="faq-item"><button type="button" class="faq-question" aria-expanded="false">Why isn’t the price changing?</button><div class="faq-answer">Prices only move while the US stock market is open, which is 2:30pm to 9pm UK time on weekdays.</div></div>
+        <div class="faq-item"><button type="button" class="faq-question" aria-expanded="false">Can I lose real money?</button><div class="faq-answer">No, this is a learning tool only. No real money is involved.</div></div>
+        <div class="faq-item"><button type="button" class="faq-question" aria-expanded="false">Where does the stock data come from?</button><div class="faq-answer">Prices come from live market data (Finnhub, with Yahoo Finance as a backup). Currency conversion uses daily European Central Bank rates.</div></div>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-links">
+        <a href="home.html#mission">About</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contact.html">Contact</a>
+        <a href="privacy.html">Privacy policy</a>
+        <a href="terms.html">Terms and conditions</a>
+      </div>
+      <div>&copy; <span id="copyright-year">2026</span> Investucation. Practice money only.</div>
+    </div>
+  </footer>
+  <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
+  <script>
+    document.querySelectorAll('.faq-question').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const open = this.parentElement.classList.toggle('open');
+        this.setAttribute('aria-expanded', open);
+      });
+    });
+  </script>
+</body>
+</html>

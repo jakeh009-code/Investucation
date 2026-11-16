@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio: Investucation</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app-storage.js"></script>
+  <script src="config.js"></script>
+  <script src="market-data.js"></script>
+  <script src="currency.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="logo" href="home.html"><span class="logo-mark" aria-hidden="true"></span>Investucation</a>
+      <nav aria-label="Main">
+      <ul class="nav-links">
+        <li><a href="home.html">Home</a></li>
+        <li><a href="dashboard.html">Dashboard</a></li>
+        <li><a href="portfolio.html" aria-current="page">Portfolio</a></li>
+        <li><a href="faq.html">FAQ</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      </nav>
+      <div class="wallet">
+        <div class="balance-chip"><small>Practice balance</small><span id="portfolio-balance">£0.00</span></div>
+        <label class="visually-hidden" for="currency-select">Currency</label>
+        <select id="currency-select" class="currency-select">
+          <option value="GBP">£ GBP</option>
+          <option value="USD">$ USD</option>
+        </select>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1>Your portfolio</h1>
+      <p>The stocks you own, what they’re worth now and how much you’ve made or lost.</p>
+    </div>
+    <div class="summary">
+      <div class="summary-item"><small>Shares worth</small><strong id="portfolio-total">£0.00</strong></div>
+      <div class="summary-item"><small>Total gain or loss</small><strong id="total-gain" class="flat">£0.00</strong><span class="sub" id="total-gain-sub">Includes stocks you’ve sold</span></div>
+      <div class="summary-item"><small>Cash left to spend</small><strong id="sum-cash">£0.00</strong></div>
+    </div>
+    <div class="table-wrap" id="table-wrap">
+      <table class="portfolio-table" id="portfolio-table">
+        <thead>
+          <tr>
+            <th scope="col">Stock</th>
+            <th scope="col">Shares</th>
+            <th scope="col">Average buy price</th>
+            <th scope="col">Price now</th>
+            <th scope="col">Value now</th>
+            <th scope="col">Gain or loss</th>
+          </tr>
+        </thead>
+        <tbody id="portfolio-tbody">
+          <tr><td colspan="6">Loading your stocks…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="empty-state" class="panel empty-state" hidden>
+      <h2>No stocks yet</h2>
+      <p>Buy your first shares and they’ll show up here.</p>
+      <a class="btn btn-primary" href="dashboard.html">Pick a stock</a>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-links">
+        <a href="home.html#mission">About</a>
+        <a href="faq.html">FAQ</a>
+        <a href="contact.html">Contact</a>
+        <a href="privacy.html">Privacy policy</a>
+        <a href="terms.html">Terms and conditions</a>
+      </div>
+      <div>&copy; <span id="copyright-year">2026</span> Investucation. Practice money only.</div>
+    </div>
+  </footer>
+  <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
+  <div id="tip-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="tip-modal-title">
+    <div id="tip-modal-backdrop"></div>
+    <div id="tip-modal-content">
+      <h2 id="tip-modal-title">Quick tip</h2>
+      <div id="tip-modal-message"></div>
+      <button type="button" id="tip-modal-continue" class="btn btn-primary btn-small">Got it</button>
+    </div>
+  </div>
+  <script>      // Amounts passed in are already in the display currency
+      function money(sym, n, signed) {
+        return window.InvestucationCurrency.format(n, signed);
+      }
+
+
+      const popularSymbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "NFLX", "JPM"];
+
+          const clientQuoteCache = new Map();
+          const CLIENT_QUOTE_TTL = 10000;
+          async function fetchStockQuote(symbol) {
+      try {
+        const now = Date.now();
+        const cached = clientQuoteCache.get(symbol);
+        if (cached && (now - cached.ts) < CLIENT_QUOTE_TTL) { return cached.data; }
+        const data = await window.InvestucationMarket.fetchQuote(symbol);
+        if (!data) { return null; }
+        clientQuoteCache.set(symbol, { ts: Date.now(), data });
+        return data;
+      } catch (error) {
+        console.error(`Failed to fetch quote for ${symbol}:`, error);
+        return null;
+      }
+    }
+
+          const clientCompanyCache = new Map();
+          const CLIENT_COMPANY_TTL = 3600 * 1000;
+          async function fetchCompanyName(symbol) {
+      try {
+        const now = Date.now();
+        const cached = clientCompanyCache.get(symbol);
+        if (cached && (now - cached.ts) < CLIENT_COMPANY_TTL) { return cached.data?.name || symbol; }
+        const name = await window.InvestucationMarket.fetchCompanyName(symbol);
+        clientCompanyCache.set(symbol, { ts: Date.now(), data: { name: name } });
+        return name;
+      } catch (error) {
+        console.error(`Failed to fetch company name for ${symbol}:`, error);
+        return symbol;
+      }
+    }
+
+      function formatCurrency(amount, currency) {
+        return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(amount);
+      }
+
+      const Cur = window.InvestucationCurrency;
+      let usdToGbpRate = 0.79;
+      async function fetchUsdToGbpRate() {
+        await Cur.load();
+        usdToGbpRate = Cur.usdToGbp();
+        window.usdToGbpRate = usdToGbpRate;
+      }
+
+      function getSoldStocks() {
+        try { return JSON.parse(localStorage.getItem(getStorageKey('soldStocks')) || '[]'); } catch { return []; }
+      }
+      function setSoldStocks(sold) {
+        localStorage.setItem(getStorageKey('soldStocks'), JSON.stringify(sold));
+      }
+
+      async function renderPortfolio() {
+        await fetchUsdToGbpRate();
+
+        let balance_gbp = Number(localStorage.getItem(getStorageKey('balance_gbp')) || 100000);
+        let balance = Cur.fromGbp(balance_gbp);
+        let symbol = '';
+        document.getElementById('portfolio-balance').textContent = money(symbol, balance);
+        document.getElementById('sum-cash').textContent = money(symbol, balance);
+        let portfolio = [];
+        try { portfolio = JSON.parse(localStorage.getItem(getStorageKey('portfolio')) || '[]'); } catch {}
+        // Combine lots by symbol
+        const combined = {};
+        for (const stock of portfolio) {
+          if (!combined[stock.symbol]) {
+            combined[stock.symbol] = { ...stock };
+          } else {
+            const prev = combined[stock.symbol];
+            // Weighted average price
+            const totalShares = prev.shares + stock.shares;
+            prev.price = ((prev.shares * prev.price) + (stock.shares * stock.price)) / totalShares;
+            prev.shares = totalShares;
+            // Use the latest date
+            prev.date = (new Date(stock.date) > new Date(prev.date)) ? stock.date : prev.date;
+          }
+        }
+        const combinedPortfolio = Object.values(combined);
+        if (!combinedPortfolio.length) {
+          document.getElementById('portfolio-tbody').innerHTML = '';
+          document.getElementById('portfolio-total').textContent = money(symbol, 0);
+          document.getElementById('table-wrap').hidden = true;
+          document.getElementById('empty-state').hidden = false;
+          return;
+        } else {
+          document.getElementById('table-wrap').hidden = false;
+          document.getElementById('empty-state').hidden = true;
+        }
+        let totalValue = 0;
+        let totalGain = 0;
+        let totalGainPercent = 0;
+        let totalCost = 0;
+        let rows = await Promise.all(combinedPortfolio.map(async (stock) => {
+          const quote = await fetchStockQuote(stock.symbol);
+          if (!quote) {
+            console.error(`No quote data available for ${stock.symbol}`);
+            return `<tr>
+              <td><a class="holding-link" href="stock.html?symbol=${encodeURIComponent(stock.symbol)}"><strong>${stock.symbol}</strong><span>Price unavailable</span></a></td>
+              <td>${stock.shares}</td>
+              <td>${money(symbol, Cur.fromGbp(stock.price))}</td>
+              <td>N/A</td>
+              <td>N/A</td>
+              <td><span class="pill flat">N/A</span></td>
+            </tr>`;
+          }
+          const currentUsd = typeof quote.c === 'number' ? quote.c : null;
+          const currentGbp = currentUsd ? currentUsd * usdToGbpRate : null;
+          let buyPrice = Cur.fromGbp(stock.price);
+          let current = currentGbp ? Cur.fromGbp(currentGbp) : null;
+          const total = current ? current * stock.shares : 0;
+          totalValue += total;
+          const gain = current && buyPrice ? (current - buyPrice) * stock.shares : 0;
+          const gainPercent = current && buyPrice ? ((current - buyPrice) / buyPrice) * 100 : 0;
+          totalGain += gain;
+          totalCost += buyPrice * stock.shares;
+          let gainClass = 'flat';
+          if (gain > 0.01) gainClass = 'up';
+          else if (gain < -0.01) gainClass = 'down';
+          const companyName = await fetchCompanyName(stock.symbol);
+          return `<tr>
+            <td><a class="holding-link" href="stock.html?symbol=${encodeURIComponent(stock.symbol)}"><strong>${stock.symbol}</strong><span>${companyName}</span></a></td>
+            <td>${stock.shares}</td>
+            <td>${money(symbol, buyPrice)}</td>
+            <td>${current ? money(symbol, current) : 'N/A'}</td>
+            <td>${current ? money(symbol, total) : 'N/A'}</td>
+            <td><span class="pill ${gainClass}">${gain > 0.01 ? '▲' : gain < -0.01 ? '▼' : '■'} ${money(symbol, gain, true)} (${gainPercent >= 0 ? '+' : ''}${gainPercent.toFixed(2)}%)</span></td>
+          </tr>`;
+        }));
+        totalGainPercent = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
+        let totalGainClass = 'gain-zero';
+        if (totalGain > 0.01) totalGainClass = 'gain-pos';
+        else if (totalGain < -0.01) totalGainClass = 'gain-neg';
+        document.getElementById('portfolio-tbody').innerHTML = rows.join('');
+        document.getElementById('portfolio-total').textContent = money(symbol, totalValue);
+
+        let sold = getSoldStocks();
+        let realizedGain = 0;
+        let realizedGainPercent = 0;
+        let realizedCost = 0;
+        for (const lot of sold) {
+          if (lot.buyPrice && lot.sellPrice && lot.shares) {
+            let buy = Cur.fromGbp(lot.buyPrice);
+            let sell = Cur.fromGbp(lot.sellPrice);
+            realizedGain += (sell - buy) * lot.shares;
+            realizedCost += buy * lot.shares;
+          }
+        }
+        realizedGainPercent = realizedCost > 0 ? (realizedGain / realizedCost) * 100 : 0;
+
+        let totalGainAll = totalGain + realizedGain;
+        let totalGainPercentAll = totalCost + realizedCost > 0 ? (totalGainAll / (totalCost + realizedCost)) * 100 : 0;
+        const allClass = totalGainAll > 0.01 ? 'up' : totalGainAll < -0.01 ? 'down' : 'flat';
+        const gainEl = document.getElementById('total-gain');
+        gainEl.className = allClass;
+        gainEl.textContent = `${money(symbol, totalGainAll, true)} (${totalGainPercentAll >= 0 ? '+' : ''}${totalGainPercentAll.toFixed(2)}%)`;
+        document.getElementById('total-gain-sub').textContent = `${money(symbol, totalGain, true)} on shares you hold, ${money(symbol, realizedGain, true)} from sales`;
+      }
+      renderPortfolio();
+      // Currency: picked from the user's region unless they choose one here
+      Cur.bindSelect(document.getElementById('currency-select'), renderPortfolio);
+
+    </script>
+  <script>
+  function showTipOnce(key, message) {
+    if (localStorage.getItem(key)) return;
+    const overlay = document.getElementById('tip-modal-overlay');
+    const msg = document.getElementById('tip-modal-message');
+    msg.innerHTML = message;
+    overlay.style.display = 'flex';
+    overlay.style.animation = 'fadeIn 0.9s';
+    document.getElementById('tip-modal-content').onclick = () => {
+      overlay.style.animation = 'fadeOut 0.9s';
+      setTimeout(() => {
+        overlay.style.animation = '';
+        overlay.style.display = 'none';
+        localStorage.setItem(key, '1');
+      }, 900);
+    };
+    document.getElementById('tip-modal-backdrop').onclick = document.getElementById('tip-modal-content').onclick;
+  }
+  showTipOnce('portfolio-tip', `This is your portfolio. It shows the stocks you own and how much you’ve made or lost on each one.`);
+</script>
+</body>
+</html>
